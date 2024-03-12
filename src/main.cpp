@@ -11,13 +11,10 @@ const int motor_a_2_pin = 3;
 const int motor_b_1_pin = 4;
 const int motor_b_2_pin = 5;
 
-const int n_shake = 3;
-
 Stepper stepper(step_per_rev, motor_a_1_pin, motor_a_2_pin, motor_b_1_pin,
                 motor_b_2_pin);
 
-void shake();
-void dispense();
+void dispense(const int);
 
 void setup() {
   pinMode(ledPin, OUTPUT);
@@ -25,24 +22,12 @@ void setup() {
 }
 
 void loop() {
-  dispense();
+  dispense(4);
   delay(1000);
 }
 
-void dispense() {
+void dispense(const int rotation) {
   digitalWrite(ledPin, HIGH);
-  for (int i = 0; i <= n_shake; i++) {
-    shake();
-  }
-
+  stepper.step(step_per_rev * rotation);
   digitalWrite(ledPin, LOW);
-  stepper.step(-step_per_rev);
-  delay(500);
-}
-
-void shake() {
-  stepper.step(+step_per_rev / 6);
-  delay(100);
-  stepper.step(-step_per_rev / 6);
-  delay(100);
 }
