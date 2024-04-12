@@ -2,6 +2,7 @@
 #include "api/Common.h"
 #include "pins_arduino.h"
 #include "secrets.h"
+#include "utility/wl_definitions.h"
 #include <Stepper.h>
 #include <WiFiNINA.h>
 
@@ -22,13 +23,32 @@ Stepper stepper(step_per_rev, motor_a_1_pin, motor_a_2_pin, motor_b_1_pin,
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
 
+void connect();
+void consume_request(WiFiClient &);
+void send_response(WiFiClient &);
 void dispense(const int);
 
 void setup() {
-  Serial.begin(9600);
   pinMode(ledPin, OUTPUT);
   stepper.setSpeed(60);
+  server.begin();
+}
 
+void loop() {
+  WiFiClient client = server.available();
+  if (client) {
+    consume_request(client);
+    send_response(client);
+    dispense(4);
+    client.stop();
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    connect();
+    server.begin();
+  }
+}
+
+void connect() {
   while (status != WL_CONNECTED) {
     status = WiFi.begin(ssid, password);
     for (int i = 0; i < 10; i++) {
@@ -36,39 +56,34 @@ void setup() {
       delay(500);
       digitalWrite(ledPin, LOW);
       delay(500);
-    }
-  }
-  IPAddress ip = WiFi.localIP();
-  if (Serial) {
-    Serial.print("IP Address: ");
-    Serial.println(ip);
-  }
-  server.begin();
-}
-
-void loop() {
-  WiFiClient client = server.available();
-  if (client) {
-    bool is_blank_line = true;
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
-
-        if (c == '\n' && is_blank_line) {
-          dispense(4);
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Length: 0");
-          client.println("");
-        }
-        if (c == '\n') {
-          is_blank_line = true;
-        } else if (c != '\r') {
-          is_blank_line = false;
-        }
+      if (WiFi.status() == WL_CONNECTED) {
+        break;
       }
     }
-    client.stop();
   }
+}
+
+void consume_request(WiFiClient &client) {
+  bool is_blank_line = true;
+  while (client.connected()) {
+    if (client.available()) {
+      char c = client.read();
+      if (c == '\n' && is_blank_line) {
+        break;
+      }
+      if (c == '\n') {
+        is_blank_line = true;
+      } else if (c != '\r') {
+        is_blank_line = false;
+      }
+    }
+  }
+}
+
+void send_response(WiFiClient &client) {
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Length: 0");
+  client.println("");
 }
 
 void dispense(const int rotation) {
