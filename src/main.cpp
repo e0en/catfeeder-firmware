@@ -29,28 +29,36 @@ void send_response(WiFiClient &);
 void dispense(const int);
 
 void setup() {
+  long started_at = millis();
+  Serial.begin(9600);
+  while (!Serial && (millis() - started_at) < 5000L) {
+    ;
+  }
+
   pinMode(ledPin, OUTPUT);
   stepper.setSpeed(60);
+  connect();
   server.begin();
 }
 
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    connect();
+    Serial.println("reconnected");
+  }
   WiFiClient client = server.available();
   if (client) {
     consume_request(client);
     send_response(client);
     dispense(4);
     client.stop();
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    connect();
-    server.begin();
+    Serial.println("feeded!");
   }
 }
 
 void connect() {
-  while (status != WL_CONNECTED) {
-    status = WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(ssid, password);
     for (int i = 0; i < 10; i++) {
       digitalWrite(ledPin, HIGH);
       delay(500);
