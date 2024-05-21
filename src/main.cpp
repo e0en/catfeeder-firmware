@@ -30,11 +30,6 @@ void dispense(const int);
 
 void setup() {
   long started_at = millis();
-  Serial.begin(9600);
-  while (!Serial && (millis() - started_at) < 5000L) {
-    ;
-  }
-
   pinMode(ledPin, OUTPUT);
   stepper.setSpeed(60);
   connect();
@@ -44,7 +39,6 @@ void setup() {
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     connect();
-    Serial.println("reconnected");
   }
   WiFiClient client = server.available();
   if (client) {
@@ -52,7 +46,6 @@ void loop() {
     send_response(client);
     dispense(4);
     client.stop();
-    Serial.println("feeded!");
   }
 }
 
