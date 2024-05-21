@@ -38,6 +38,8 @@ void setup() {
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect();
+    WiFi.end();
     connect();
     server.begin();
     delay(1000);
