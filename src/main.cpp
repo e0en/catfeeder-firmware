@@ -42,10 +42,12 @@ void loop() {
   }
   WiFiClient client = server.available();
   if (client) {
+    digitalWrite(ledPin, HIGH);
     consume_request(client);
     send_response(client);
     dispense(4);
     client.stop();
+    digitalWrite(ledPin, LOW);
   }
 }
 
