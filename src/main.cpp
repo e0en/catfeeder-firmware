@@ -39,6 +39,12 @@ void setup() {
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     connect();
+    server.begin();
+    delay(1000);
+  }
+  if (server.status() == CLOSED) {
+    server.begin();
+    delay(1000);
   }
   WiFiClient client = server.available();
   if (client) {
