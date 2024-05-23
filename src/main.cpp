@@ -27,6 +27,7 @@ void connect();
 void consume_request(WiFiClient &);
 void send_response(WiFiClient &);
 void dispense(const int);
+void fast_blink();
 
 void setup() {
   long started_at = millis();
@@ -43,6 +44,10 @@ void loop() {
     connect();
     server.begin();
     delay(1000);
+    if (WiFi.status() != WL_CONNECTED) {
+      fast_blink();
+      return;
+    }
   }
   if (server.status() == CLOSED) {
     server.begin();
@@ -60,16 +65,14 @@ void loop() {
 }
 
 void connect() {
-  while (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(ledPin, HIGH);
-      delay(500);
-      digitalWrite(ledPin, LOW);
-      delay(500);
-      if (WiFi.status() == WL_CONNECTED) {
-        break;
-      }
+  WiFi.begin(ssid, password);
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(ledPin, HIGH);
+    delay(500);
+    digitalWrite(ledPin, LOW);
+    delay(500);
+    if (WiFi.status() == WL_CONNECTED) {
+      break;
     }
   }
 }
@@ -101,4 +104,13 @@ void dispense(const int rotation) {
   digitalWrite(ledPin, HIGH);
   stepper.step(step_per_rev * rotation);
   digitalWrite(ledPin, LOW);
+}
+
+void fast_blink() {
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
+    delay(100);
+  }
 }
