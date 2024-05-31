@@ -58,7 +58,7 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED) {
       serial_print("WiFi reconnect failed. reset.");
       fast_blink();
-      return;
+      reset();
     }
   }
   if (server.status() != LISTEN) {
