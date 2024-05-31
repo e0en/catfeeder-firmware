@@ -6,6 +6,8 @@
 #include <Stepper.h>
 #include <WiFiNINA.h>
 
+const bool DEBUG = false;
+
 char ssid[] = SECRET_SSID;
 char password[] = SECRET_PASSWORD;
 
@@ -28,43 +30,56 @@ void consume_request(WiFiClient &);
 void send_response(WiFiClient &);
 void dispense(const int);
 void fast_blink();
+void reset();
+void serial_print(const char message[]);
 
 void setup() {
+  if (DEBUG) {
+    Serial.begin(9600);
+  }
+  serial_print("setup() started.");
+
   long started_at = millis();
   pinMode(ledPin, OUTPUT);
   stepper.setSpeed(60);
   connect();
   server.begin();
+  serial_print("setup() finished.");
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
+    serial_print("WiFi disconnected");
     WiFi.disconnect();
     WiFi.end();
     connect();
     server.begin();
     delay(1000);
     if (WiFi.status() != WL_CONNECTED) {
+      serial_print("WiFi reconnect failed. reset.");
       fast_blink();
       return;
     }
   }
-  if (server.status() == CLOSED) {
-    server.begin();
-    delay(1000);
+  if (server.status() != LISTEN) {
+    serial_print("Server not listening.");
+    reset();
   }
   WiFiClient client = server.available();
   if (client) {
+    serial_print("dispense started.");
     digitalWrite(ledPin, HIGH);
     consume_request(client);
     send_response(client);
     dispense(4);
     client.stop();
     digitalWrite(ledPin, LOW);
+    serial_print("dispense finished.");
   }
 }
 
 void connect() {
+  serial_print("connect() started.");
   WiFi.begin(ssid, password);
   for (int i = 0; i < 10; i++) {
     digitalWrite(ledPin, HIGH);
@@ -75,6 +90,7 @@ void connect() {
       break;
     }
   }
+  serial_print("connect() finished.");
 }
 
 void consume_request(WiFiClient &client) {
@@ -112,5 +128,17 @@ void fast_blink() {
     delay(100);
     digitalWrite(ledPin, LOW);
     delay(100);
+  }
+}
+
+void reset() {
+  serial_print("reset()");
+  delay(10000);
+  asm volatile("jmp 0");
+}
+
+void serial_print(const char message[]) {
+  if (DEBUG) {
+    Serial.println(message);
   }
 }
