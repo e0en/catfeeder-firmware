@@ -1,15 +1,16 @@
-#include <stdio.h>
-
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_event.h"
+#include "esp_log.h"
 #include "esp_netif_types.h"
 #include "esp_wifi.h"
 #include "esp_wifi_default.h"
 #include "esp_wifi_types.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "portmacro.h"
 #include "secrets.h"
+#include <esp_http_server.h>
 
 const int step_per_rev = 200;
 const int motor_a_1_pin = 2;
@@ -18,62 +19,97 @@ const int motor_b_1_pin = 4;
 const int motor_b_2_pin = 5;
 
 const gpio_num_t GPIO_PIN = GPIO_NUM_8;
-const TickType_t BLINK_PERIOD = 1000;
 
+/* WiFi-related variables */
 static int wifi_retry_count = 0;
 
-/* FreeRTOS event group to signal when we are connected*/
+/* FreeRTOS event group for wifi events */
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+void my_sleep(TickType_t milliseconds);
 void blink_once(TickType_t duration_ms);
 void setup_wifi();
-static void event_handler(void *arg, esp_event_base_t event_base,
-                          int32_t event_id, void *event_data);
+static void wifi_event_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data);
+
+/* webserver-related variables */
+static httpd_handle_t start_webserver();
+static esp_err_t stop_webserver(httpd_handle_t server);
+static esp_err_t root_uri_handler(httpd_req_t *request);
+
+static void connect_handler(void *arg, esp_event_base_t event_base,
+                            int32_t event_id, void *event_data);
+static void disconnect_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data);
+
+static const httpd_uri_t root = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = root_uri_handler,
+    .user_ctx = NULL,
+};
 
 extern "C" void app_main(void) {
-  // todo: add http server
-  // https://github.com/espressif/esp-idf/tree/master/examples/protocols/http_server
-  //
   // todo: add stepper control
   // https://github.com/espressif/esp-idf/tree/master/examples/peripherals/gpio/generic_gpio
   // https://github.com/espressif/esp-idf/tree/master/examples/peripherals/rmt/stepper_motor
+  static httpd_handle_t server = NULL;
+  s_wifi_event_group = xEventGroupCreate();
+
+  ESP_ERROR_CHECK(nvs_flash_init());
+  ESP_ERROR_CHECK(esp_netif_init()); // init underlying tcp/ip stack
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
   gpio_reset_pin(GPIO_PIN);
   gpio_set_direction(GPIO_PIN, GPIO_MODE_OUTPUT);
 
-  // initialize non-volatile storage encryped r/w
-  ESP_ERROR_CHECK(nvs_flash_init());
   setup_wifi();
 
-  while (true) {
-    blink_once(1000);
+  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                             &connect_handler, &server));
+  ESP_ERROR_CHECK(esp_event_handler_register(
+      WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, &server));
+
+  server = start_webserver();
+  ESP_LOGI("server", "started");
+
+  while (server) {
+    ESP_LOGI("server", "alive");
+    blink_once(100);
+    my_sleep(2000);
   }
 }
 
 void blink_once(TickType_t duration_ms) {
-  gpio_set_level(GPIO_PIN, true);
-  vTaskDelay(duration_ms / portTICK_PERIOD_MS);
   gpio_set_level(GPIO_PIN, false);
-  vTaskDelay(duration_ms / portTICK_PERIOD_MS);
+  my_sleep(duration_ms);
+  gpio_set_level(GPIO_PIN, true);
+  my_sleep(duration_ms);
+}
+
+void my_sleep(TickType_t milliseconds) {
+  vTaskDelay(milliseconds / portTICK_PERIOD_MS);
 }
 
 void setup_wifi(void) {
-  s_wifi_event_group = xEventGroupCreate();
+  EventGroupHandle_t wifi_event_group = xEventGroupCreate();
 
-  ESP_ERROR_CHECK(esp_netif_init()); // init underlying tcp/ip stack
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
   esp_netif_create_default_wifi_sta(); // setup wifi station object
 
   wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&config));
 
-  esp_event_handler_instance_t instance_wifi;
+  esp_event_handler_instance_t instance_any_id;
   esp_event_handler_instance_t instance_got_ip;
   ESP_ERROR_CHECK(esp_event_handler_instance_register(
-      WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_wifi));
+      WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL,
+      &instance_any_id));
   ESP_ERROR_CHECK(esp_event_handler_instance_register(
-      IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
+      IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL,
+      &instance_got_ip));
+  xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
 
   wifi_config_t wifi_config = {
       .sta =
@@ -92,18 +128,18 @@ void setup_wifi(void) {
 
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                         pdFALSE, pdFALSE, portMAX_DELAY);
-  if (bits & WIFI_CONNECTED_BIT) {
-    for (int i = 0; i < 10; i++) {
-      blink_once(100);
-    }
-  }
+  xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                      pdFALSE, pdFALSE, portMAX_DELAY);
+
+  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
+      WIFI_EVENT, ESP_EVENT_ANY_ID, &instance_any_id));
+  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
+      IP_EVENT, IP_EVENT_STA_GOT_IP, &instance_got_ip));
+  vEventGroupDelete(wifi_event_group);
 }
 
-static void event_handler(void *arg, esp_event_base_t event_base,
-                          int32_t event_id, void *event_data) {
+static void wifi_event_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data) {
   if (event_base == WIFI_EVENT) {
     if (event_id == WIFI_EVENT_STA_START) {
       esp_wifi_connect();
@@ -119,4 +155,44 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     wifi_retry_count = 0;
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
   }
+}
+
+static httpd_handle_t start_webserver() {
+  httpd_handle_t server = NULL;
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+  if (httpd_start(&server, &config) == ESP_OK) {
+    httpd_register_uri_handler(server, &root);
+    return server;
+  }
+  return NULL;
+}
+
+static esp_err_t stop_webserver(httpd_handle_t server) {
+  return httpd_stop(server);
+}
+
+static void disconnect_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data) {
+  httpd_handle_t *server = (httpd_handle_t *)arg;
+  if (*server) {
+    if (stop_webserver(*server) == ESP_OK) {
+      *server = NULL;
+    } else {
+      ;
+    }
+  }
+}
+
+static void connect_handler(void *arg, esp_event_base_t event_base,
+                            int32_t event_id, void *event_data) {
+  httpd_handle_t *server = (httpd_handle_t *)arg;
+  if (*server == NULL) {
+    *server = start_webserver();
+  }
+}
+
+static esp_err_t root_uri_handler(httpd_req_t *request) {
+  httpd_resp_send(request, "", HTTPD_RESP_USE_STRLEN);
+  return ESP_OK;
 }
