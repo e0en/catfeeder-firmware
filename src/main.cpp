@@ -7,16 +7,43 @@
 #include "esp_wifi_default.h"
 #include "esp_wifi_types.h"
 #include "freertos/task.h"
+#include "hal/gpio_types.h"
 #include "nvs_flash.h"
-#include "portmacro.h"
 #include "secrets.h"
 #include <esp_http_server.h>
 
-const int step_per_rev = 200;
-const int motor_a_1_pin = 2;
-const int motor_a_2_pin = 3;
-const int motor_b_1_pin = 4;
-const int motor_b_2_pin = 5;
+// const int step_per_rev = 200;
+const gpio_num_t MOTOR1_A_PIN = GPIO_NUM_0; // red
+const gpio_num_t MOTOR2_B_PIN = GPIO_NUM_1; // black
+const gpio_num_t MOTOR1_C_PIN = GPIO_NUM_2; // blue
+const gpio_num_t MOTOR2_D_PIN = GPIO_NUM_3; // green
+
+// Define the steps for the stepper motor
+const int step_sequence[8][4] = {{1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0},
+                                 {0, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 1},
+                                 {0, 0, 0, 1}, {1, 0, 0, 1}};
+
+void set_step(int step) {
+  gpio_set_level(MOTOR1_A_PIN, step_sequence[step][0]);
+  gpio_set_level(MOTOR2_B_PIN, step_sequence[step][1]);
+  gpio_set_level(MOTOR1_C_PIN, step_sequence[step][2]);
+  gpio_set_level(MOTOR2_D_PIN, step_sequence[step][3]);
+}
+
+void spin_once() {
+  int step = 0;
+  for (int i = 0; i < 400; i++) {
+    step = (step + 8 - 1) % 8;
+    set_step(step);
+    vTaskDelay(5 / portTICK_PERIOD_MS); // Adjust delay for speed control
+  }
+}
+
+void dispense() {
+  for (int i = 0; i < 4; i++) {
+    spin_once();
+  }
+}
 
 const gpio_num_t GPIO_PIN = GPIO_NUM_8;
 
@@ -64,6 +91,10 @@ extern "C" void app_main(void) {
 
   gpio_reset_pin(GPIO_PIN);
   gpio_set_direction(GPIO_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(MOTOR1_A_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(MOTOR2_B_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(MOTOR1_C_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(MOTOR2_D_PIN, GPIO_MODE_OUTPUT);
 
   setup_wifi();
 
@@ -193,6 +224,7 @@ static void connect_handler(void *arg, esp_event_base_t event_base,
 }
 
 static esp_err_t root_uri_handler(httpd_req_t *request) {
+  dispense();
   httpd_resp_send(request, "", HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
