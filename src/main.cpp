@@ -19,9 +19,8 @@ const gpio_num_t MOTOR1_C_PIN = GPIO_NUM_2; // blue
 const gpio_num_t MOTOR2_D_PIN = GPIO_NUM_3; // green
 
 // Define the steps for the stepper motor
-const int step_sequence[8][4] = {{1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0},
-                                 {0, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 1},
-                                 {0, 0, 0, 1}, {1, 0, 0, 1}};
+const int step_sequence[4][4] = {
+    {1, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 1, 1}, {1, 0, 0, 1}};
 
 void set_step(int step) {
   gpio_set_level(MOTOR1_A_PIN, step_sequence[step][0]);
@@ -33,7 +32,7 @@ void set_step(int step) {
 void spin_once() {
   int step = 0;
   for (int i = 0; i < 400; i++) {
-    step = (step + 8 - 1) % 8;
+    step = (step + 4 - 1) % 4;
     set_step(step);
     vTaskDelay(5 / portTICK_PERIOD_MS); // Adjust delay for speed control
   }
