@@ -29,18 +29,22 @@ void set_step(int step) {
   gpio_set_level(MOTOR2_D_PIN, step_sequence[step][3]);
 }
 
-void spin_once() {
-  int step = 0;
-  for (int i = 0; i < 400; i++) {
-    step = (step + 4 - 1) % 4;
-    set_step(step);
+void do_full_step() {
+  for (int i = 0; i < 4; i++) {
+    set_step(i);
     vTaskDelay(5 / portTICK_PERIOD_MS); // Adjust delay for speed control
   }
 }
 
+void spin_once() {
+  for (int i = 0; i < 100; i++) {
+    do_full_step(); // 400 step = 100 full step = 1 spin
+  }
+}
+
 void dispense() {
-  for (int i = 0; i < 4; i++) {
-    spin_once();
+  for (int i = 0; i < 25; i++) {
+    do_full_step();
   }
 }
 
