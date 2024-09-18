@@ -48,7 +48,7 @@ void dispense() {
   }
 }
 
-const gpio_num_t GPIO_PIN = GPIO_NUM_8;
+const gpio_num_t LED_PIN = GPIO_NUM_8;
 
 /* WiFi-related variables */
 static int wifi_retry_count = 0;
@@ -92,8 +92,8 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init()); // init underlying tcp/ip stack
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  gpio_reset_pin(GPIO_PIN);
-  gpio_set_direction(GPIO_PIN, GPIO_MODE_OUTPUT);
+  gpio_reset_pin(LED_PIN);
+  gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(MOTOR1_A_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(MOTOR2_B_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(MOTOR1_C_PIN, GPIO_MODE_OUTPUT);
@@ -117,9 +117,9 @@ extern "C" void app_main(void) {
 }
 
 void blink_once(TickType_t duration_ms) {
-  gpio_set_level(GPIO_PIN, false);
+  gpio_set_level(LED_PIN, false);
   my_sleep(duration_ms);
-  gpio_set_level(GPIO_PIN, true);
+  gpio_set_level(LED_PIN, true);
   my_sleep(duration_ms);
 }
 
