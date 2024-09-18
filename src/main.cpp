@@ -12,40 +12,39 @@
 #include "secrets.h"
 #include <esp_http_server.h>
 
-// const int step_per_rev = 200;
-const gpio_num_t MOTOR1_A_PIN = GPIO_NUM_0; // red
-const gpio_num_t MOTOR2_B_PIN = GPIO_NUM_1; // black
-const gpio_num_t MOTOR1_C_PIN = GPIO_NUM_2; // blue
-const gpio_num_t MOTOR2_D_PIN = GPIO_NUM_3; // green
+void my_sleep(TickType_t milliseconds);
 
-// Define the steps for the stepper motor
-const int step_sequence[4][4] = {
-    {1, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 1, 1}, {1, 0, 0, 1}};
+// const int step_per_rev = 200;
+const gpio_num_t DIR_PIN = GPIO_NUM_20;
+const gpio_num_t STEP_PIN = GPIO_NUM_21;
 
 void set_step(int step) {
-  gpio_set_level(MOTOR1_A_PIN, step_sequence[step][0]);
-  gpio_set_level(MOTOR2_B_PIN, step_sequence[step][1]);
-  gpio_set_level(MOTOR1_C_PIN, step_sequence[step][2]);
-  gpio_set_level(MOTOR2_D_PIN, step_sequence[step][3]);
+  gpio_set_level(STEP_PIN, 0);
+  my_sleep(1);
+  gpio_set_level(STEP_PIN, 1);
+  my_sleep(1);
 }
 
 void do_full_step() {
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 8; i++) {
     set_step(i);
-    vTaskDelay(5 / portTICK_PERIOD_MS); // Adjust delay for speed control
-  }
-}
-
-void spin_once() {
-  for (int i = 0; i < 100; i++) {
-    do_full_step(); // 400 step = 100 full step = 1 spin
   }
 }
 
 void dispense() {
   for (int i = 0; i < 25; i++) {
+    gpio_set_level(STEP_PIN, 0);
+    do_full_step();
+    do_full_step();
+    do_full_step();
+    do_full_step();
+    do_full_step();
+    gpio_set_level(STEP_PIN, 1);
+    my_sleep(50);
+    do_full_step();
     do_full_step();
   }
+  my_sleep(10);
 }
 
 const gpio_num_t LED_PIN = GPIO_NUM_8;
@@ -58,7 +57,6 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
-void my_sleep(TickType_t milliseconds);
 void blink_once(TickType_t duration_ms);
 void setup_wifi();
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
@@ -93,11 +91,14 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
   gpio_reset_pin(LED_PIN);
+  gpio_reset_pin(DIR_PIN);
+  gpio_reset_pin(STEP_PIN);
   gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
-  gpio_set_direction(MOTOR1_A_PIN, GPIO_MODE_OUTPUT);
-  gpio_set_direction(MOTOR2_B_PIN, GPIO_MODE_OUTPUT);
-  gpio_set_direction(MOTOR1_C_PIN, GPIO_MODE_OUTPUT);
-  gpio_set_direction(MOTOR2_D_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(DIR_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(STEP_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_level(LED_PIN, 0);
+  gpio_set_level(DIR_PIN, 0);
+  gpio_set_level(STEP_PIN, 0);
 
   setup_wifi();
 
