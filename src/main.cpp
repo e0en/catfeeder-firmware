@@ -9,45 +9,45 @@
 #include "freertos/task.h"
 #include "hal/gpio_types.h"
 #include "nvs_flash.h"
+#include "portmacro.h"
 #include "secrets.h"
 #include <esp_http_server.h>
 
 void my_sleep(TickType_t milliseconds);
 
-// const int step_per_rev = 200;
+const gpio_num_t LED_PIN = GPIO_NUM_8;
+const gpio_num_t MOTOR_ON_PIN = GPIO_NUM_0;
 const gpio_num_t DIR_PIN = GPIO_NUM_20;
 const gpio_num_t STEP_PIN = GPIO_NUM_21;
+const int MICROSTEP = 1;
 
-void set_step(int step) {
+void set_step() {
   gpio_set_level(STEP_PIN, 0);
-  my_sleep(1);
+  vTaskDelay(1 / portTICK_PERIOD_MS);
   gpio_set_level(STEP_PIN, 1);
-  my_sleep(1);
+  vTaskDelay(1 / portTICK_PERIOD_MS);
 }
 
 void do_full_step() {
-  for (int i = 0; i < 8; i++) {
-    set_step(i);
+  for (int i = 0; i < MICROSTEP; i++) {
+    set_step();
   }
 }
 
 void dispense() {
-  for (int i = 0; i < 25; i++) {
-    gpio_set_level(STEP_PIN, 0);
+  gpio_set_level(MOTOR_ON_PIN, 1);
+  my_sleep(10);
+  for (int i = 0; i < 5; i++) {
+    gpio_set_level(DIR_PIN, 0);
     do_full_step();
     do_full_step();
-    do_full_step();
-    do_full_step();
-    do_full_step();
-    gpio_set_level(STEP_PIN, 1);
+    gpio_set_level(DIR_PIN, 1);
     my_sleep(50);
-    do_full_step();
     do_full_step();
   }
   my_sleep(10);
+  gpio_set_level(MOTOR_ON_PIN, 0);
 }
-
-const gpio_num_t LED_PIN = GPIO_NUM_8;
 
 /* WiFi-related variables */
 static int wifi_retry_count = 0;
@@ -91,12 +91,17 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
   gpio_reset_pin(LED_PIN);
+  gpio_reset_pin(MOTOR_ON_PIN);
   gpio_reset_pin(DIR_PIN);
   gpio_reset_pin(STEP_PIN);
+
   gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(MOTOR_ON_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(DIR_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(STEP_PIN, GPIO_MODE_OUTPUT);
+
   gpio_set_level(LED_PIN, 0);
+  gpio_set_level(MOTOR_ON_PIN, 0);
   gpio_set_level(DIR_PIN, 0);
   gpio_set_level(STEP_PIN, 0);
 
