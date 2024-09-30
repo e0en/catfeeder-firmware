@@ -34,15 +34,30 @@ void do_full_step() {
   }
 }
 
-void dispense() {
+void vibrate() {
   gpio_set_level(MOTOR_ON_PIN, 1);
-  my_sleep(10);
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 10; i++) {
     gpio_set_level(DIR_PIN, 0);
     do_full_step();
     do_full_step();
     gpio_set_level(DIR_PIN, 1);
+    do_full_step();
+    do_full_step();
+  }
+  gpio_set_level(MOTOR_ON_PIN, 0);
+}
+
+void dispense() {
+  my_sleep(10);
+  vibrate();
+  my_sleep(100);
+  gpio_set_level(MOTOR_ON_PIN, 1);
+  for (int i = 0; i < 10; i++) {
+    gpio_set_level(DIR_PIN, 0);
+    do_full_step();
+    do_full_step();
     my_sleep(50);
+    gpio_set_level(DIR_PIN, 1);
     do_full_step();
   }
   my_sleep(10);
