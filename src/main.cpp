@@ -1,4 +1,6 @@
 #include "secrets.h"
+
+extern "C" {
 #include <driver/gpio.h>
 #include <esp_err.h>
 #include <esp_event.h>
@@ -12,6 +14,7 @@
 #include <hal/gpio_types.h>
 #include <nvs_flash.h>
 #include <portmacro.h>
+}
 
 void my_sleep(TickType_t milliseconds);
 
