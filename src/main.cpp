@@ -1,17 +1,17 @@
-#include "driver/gpio.h"
-#include "esp_err.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_netif_types.h"
-#include "esp_wifi.h"
-#include "esp_wifi_default.h"
-#include "esp_wifi_types.h"
-#include "freertos/task.h"
-#include "hal/gpio_types.h"
-#include "nvs_flash.h"
-#include "portmacro.h"
 #include "secrets.h"
+#include <driver/gpio.h>
+#include <esp_err.h>
+#include <esp_event.h>
 #include <esp_http_server.h>
+#include <esp_log.h>
+#include <esp_netif_types.h>
+#include <esp_wifi.h>
+#include <esp_wifi_default.h>
+#include <esp_wifi_types.h>
+#include <freertos/task.h>
+#include <hal/gpio_types.h>
+#include <nvs_flash.h>
+#include <portmacro.h>
 
 void my_sleep(TickType_t milliseconds);
 
@@ -169,8 +169,8 @@ void setup_wifi(void) {
   wifi_config_t wifi_config = {
       .sta =
           {
-              .ssid = SECRET_SSID,
-              .password = SECRET_PASSWORD,
+              .ssid = WIFI_SSID,
+              .password = WIFI_PASSWORD,
               .threshold =
                   {
                       .authmode = WIFI_AUTH_OPEN,
