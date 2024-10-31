@@ -52,7 +52,7 @@ void dispense() {
   vibrate();
   my_sleep(100);
   gpio_set_level(MOTOR_ON_PIN, 1);
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 5; i++) {
     gpio_set_level(DIR_PIN, 0);
     do_full_step();
     do_full_step();
