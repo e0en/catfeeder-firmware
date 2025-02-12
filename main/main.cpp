@@ -10,6 +10,7 @@ extern "C" {
 #include <esp_wifi.h>
 #include <esp_wifi_default.h>
 #include <esp_wifi_types.h>
+#include <freertos/idf_additions.h>
 #include <freertos/task.h>
 #include <hal/gpio_types.h>
 #include <nvs_flash.h>
@@ -55,7 +56,7 @@ void dispense() {
   vibrate();
   my_sleep(100);
   gpio_set_level(MOTOR_ON_PIN, 1);
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 3; i++) {
     gpio_set_level(DIR_PIN, 0);
     do_full_step();
     do_full_step();
@@ -68,7 +69,7 @@ void dispense() {
 }
 
 /* WiFi-related variables */
-static int wifi_retry_count = 0;
+static int s_wifi_retry_count = 0;
 
 /* FreeRTOS event group for wifi events */
 static EventGroupHandle_t s_wifi_event_group;
@@ -76,7 +77,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT BIT1
 
 void blink_once(TickType_t duration_ms);
-void setup_wifi();
+esp_err_t setup_wifi();
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data);
 
@@ -98,9 +99,6 @@ static const httpd_uri_t root = {
 };
 
 extern "C" void app_main(void) {
-  // todo: add stepper control
-  // https://github.com/espressif/esp-idf/tree/master/examples/peripherals/gpio/generic_gpio
-  // https://github.com/espressif/esp-idf/tree/master/examples/peripherals/rmt/stepper_motor
   static httpd_handle_t server = NULL;
   s_wifi_event_group = xEventGroupCreate();
 
@@ -123,7 +121,7 @@ extern "C" void app_main(void) {
   gpio_set_level(DIR_PIN, 0);
   gpio_set_level(STEP_PIN, 0);
 
-  setup_wifi();
+  ESP_ERROR_CHECK(setup_wifi());
 
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                              &connect_handler, &server));
@@ -134,7 +132,7 @@ extern "C" void app_main(void) {
   ESP_LOGI("server", "started");
 
   while (server) {
-    ESP_LOGI("server", "alive");
+    ESP_LOGI("server", "alive"); // todo: replace with MQTT publish
     blink_once(100);
     my_sleep(2000);
   }
@@ -151,11 +149,12 @@ void my_sleep(TickType_t milliseconds) {
   vTaskDelay(milliseconds / portTICK_PERIOD_MS);
 }
 
-void setup_wifi(void) {
-  EventGroupHandle_t wifi_event_group = xEventGroupCreate();
+esp_err_t setup_wifi(void) {
+  const char *TAG = "WIFI";
 
   esp_netif_create_default_wifi_sta(); // setup wifi station object
 
+  s_wifi_event_group = xEventGroupCreate();
   wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&config));
 
@@ -167,7 +166,6 @@ void setup_wifi(void) {
   ESP_ERROR_CHECK(esp_event_handler_instance_register(
       IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL,
       &instance_got_ip));
-  xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
 
   wifi_config_t wifi_config = {
       .sta =
@@ -183,34 +181,52 @@ void setup_wifi(void) {
 
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                      pdFALSE, pdFALSE, portMAX_DELAY);
+  EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                         pdFALSE, pdFALSE, portMAX_DELAY);
+
+  if (bits & WIFI_CONNECTED_BIT) {
+    ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", WIFI_SSID,
+             WIFI_PASSWORD);
+  } else if (bits & WIFI_FAIL_BIT) {
+    ESP_LOGE(TAG, "Connection failed");
+    return ESP_ERR_TIMEOUT;
+  } else {
+    ESP_LOGE(TAG, "UNEXPECTED EVENT");
+  }
 
   ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
       WIFI_EVENT, ESP_EVENT_ANY_ID, &instance_any_id));
   ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
       IP_EVENT, IP_EVENT_STA_GOT_IP, &instance_got_ip));
-  vEventGroupDelete(wifi_event_group);
+  vEventGroupDelete(s_wifi_event_group);
+  return ESP_OK;
 }
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
-  if (event_base == WIFI_EVENT) {
-    if (event_id == WIFI_EVENT_STA_START) {
+  const char *TAG = "WIFI_EVENT";
+  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    ESP_LOGI(TAG, "station started");
+    esp_wifi_connect();
+  } else if (event_base == WIFI_EVENT &&
+             event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    if (s_wifi_retry_count < 5) {
+      ESP_LOGW(TAG, "disconnected: %d retries", s_wifi_retry_count);
       esp_wifi_connect();
-    } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
-      if (wifi_retry_count < 5) {
-        esp_wifi_connect();
-        wifi_retry_count++;
-      } else {
-        xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-      }
+      s_wifi_retry_count++;
+    } else {
+      ESP_LOGE(TAG, "failed after %d retries", s_wifi_retry_count);
+      xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-    wifi_retry_count = 0;
+    ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+    ESP_LOGI(TAG, "connected, got IP address = " IPSTR,
+             IP2STR(&event->ip_info.ip));
+    s_wifi_retry_count = 0;
+    ESP_LOGI(TAG, "connected!");
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
   }
 }

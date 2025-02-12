@@ -1,6 +1,5 @@
-.pio
 .cache/
 compile_commands.json
-src/secrets.h
+main/secrets.h
 components/
 build/
