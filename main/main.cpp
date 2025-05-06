@@ -4,6 +4,7 @@ extern "C" {
 #include <driver/gpio.h>
 #include <esp_err.h>
 #include <esp_event.h>
+#include <esp_http_client.h>
 #include <esp_http_server.h>
 #include <esp_log.h>
 #include <esp_netif_types.h>
@@ -19,10 +20,12 @@ extern "C" {
 
 void my_sleep(TickType_t milliseconds);
 
+;
 const gpio_num_t LED_PIN = GPIO_NUM_8;
 const gpio_num_t MOTOR_ON_PIN = GPIO_NUM_0;
 const gpio_num_t DIR_PIN = GPIO_NUM_20;
 const gpio_num_t STEP_PIN = GPIO_NUM_21;
+const gpio_num_t BUTTON_PIN = GPIO_NUM_3;
 const int MICROSTEP = 1;
 
 void set_step() {
@@ -74,6 +77,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT BIT1
 
 void blink_once(TickType_t duration_ms);
+void log_manually();
 esp_err_t setup_wifi();
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data);
@@ -103,6 +107,15 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init()); // init underlying tcp/ip stack
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+  gpio_config_t button_conf = {
+      .pin_bit_mask = (1ULL << BUTTON_PIN),
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_ENABLE,
+      .intr_type = GPIO_INTR_ANYEDGE,
+  };
+  gpio_config(&button_conf);
+
   gpio_reset_pin(LED_PIN);
   gpio_reset_pin(MOTOR_ON_PIN);
   gpio_reset_pin(DIR_PIN);
@@ -128,11 +141,41 @@ extern "C" void app_main(void) {
   server = start_webserver();
   ESP_LOGI("server", "started");
 
+  TickType_t last_blinked_at = 0;
+  bool last_button_state = false;
+
   while (server) {
     ESP_LOGI("server", "alive"); // todo: replace with MQTT publish
-    blink_once(100);
-    my_sleep(2000);
+    bool button_state = (gpio_get_level(BUTTON_PIN) != 0);
+    ESP_LOGI("button", "%d -> %d", last_button_state, button_state);
+    if (!last_button_state && button_state) {
+      ESP_LOGI("server", "button pressed");
+      dispense();
+      log_manually();
+    }
+    last_button_state = button_state;
+
+    if (xTaskGetTickCount() - last_blinked_at > (2000 / portTICK_PERIOD_MS)) {
+      last_blinked_at = xTaskGetTickCount();
+      blink_once(100);
+    }
+    my_sleep(100);
   }
+}
+
+void log_manually() {
+  esp_http_client_config_t config = {
+      .url = LOG_URI,
+  };
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  esp_err_t err = esp_http_client_perform(client);
+
+  if (err == ESP_OK) {
+    ESP_LOGI("HTTP", "Request sent successfully");
+  } else {
+    ESP_LOGE("HTTP", "Request failed: %s", esp_err_to_name(err));
+  }
+  esp_http_client_cleanup(client);
 }
 
 void blink_once(TickType_t duration_ms) {
@@ -194,10 +237,10 @@ esp_err_t setup_wifi(void) {
     ESP_LOGE(TAG, "UNEXPECTED EVENT");
   }
 
-  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
-      WIFI_EVENT, ESP_EVENT_ANY_ID, &instance_any_id));
-  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(
-      IP_EVENT, IP_EVENT_STA_GOT_IP, &instance_got_ip));
+  esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                        &instance_any_id);
+  esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                        &instance_got_ip);
   vEventGroupDelete(s_wifi_event_group);
   return ESP_OK;
 }
