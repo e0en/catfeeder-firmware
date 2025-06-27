@@ -26,6 +26,7 @@ const gpio_num_t MOTOR_ON_PIN = GPIO_NUM_0;
 const gpio_num_t DIR_PIN = GPIO_NUM_20;
 const gpio_num_t STEP_PIN = GPIO_NUM_21;
 const gpio_num_t BUTTON_PIN = GPIO_NUM_3;
+const gpio_num_t EN_PIN = GPIO_NUM_5;
 const int MICROSTEP = 1;
 
 void set_step() {
@@ -120,16 +121,19 @@ extern "C" void app_main(void) {
   gpio_reset_pin(MOTOR_ON_PIN);
   gpio_reset_pin(DIR_PIN);
   gpio_reset_pin(STEP_PIN);
+  gpio_reset_pin(EN_PIN);
 
   gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(MOTOR_ON_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(DIR_PIN, GPIO_MODE_OUTPUT);
   gpio_set_direction(STEP_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_direction(EN_PIN, GPIO_MODE_OUTPUT);
 
   gpio_set_level(LED_PIN, 0);
   gpio_set_level(MOTOR_ON_PIN, 0);
   gpio_set_level(DIR_PIN, 0);
   gpio_set_level(STEP_PIN, 0);
+  gpio_set_level(EN_PIN, 1);
 
   ESP_ERROR_CHECK(setup_wifi());
 
